@@ -51,7 +51,7 @@ def main(mrf_url, insurer):
     file_path = create_dir_path(insurer, subdir, mrf_file_name)
     file_path = file_path + "/"
 
-    pre_process_data(spark, mrf_url, mrf_file_name, file_path, 10000)
+    pre_process_data(spark, mrf_url, mrf_file_name, file_path, 10)
     data = extract_data(spark, file_path)
     spark_log.info('Preprocessed file has been created for objs from ' + insurer + "'s TOC " + "at " + file_path)
     #read parquet file as stream and extract it into data frame
@@ -98,6 +98,7 @@ def pre_process_data(spark, url, file_name, file_path, num_objs_in_file):
             f = open(obj_file_path, 'w')
             print(json_payload)
             print(json.dump(json_payload, fp=f, separators=(',', ':')))
+            yield obj_count
             json_payload = []
 
     # create file for any leftover objects
@@ -187,5 +188,5 @@ def transform_plan_to_file(file_name, data, reporting_month):
     return plan_df, unique_files
 
 if __name__ == '__main__':
-    mrf_url = "https://uhc-tic-mrf.azureedge.net/public-mrf/2024-01-01/2024-01-01_-A-1-PUMP-INC_index.json"
+    mrf_url = "https://antm-pt-prod-dataz-nogbd-nophi-us-east1.s3.amazonaws.com/anthem/2024-02-01_anthem_index.json.gz"
     main(mrf_url, "anthem")

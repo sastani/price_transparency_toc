@@ -63,8 +63,8 @@ def load_data(df, month, insurer, type):
             .format("parquet") \
             .outputMode("append")\
             .queryName(type)\
-            .option("checkpointLocation", (file_path + "/_checkpoint")) \
-            .option("path", file_path + ".parquet")\
+            .option("checkpointLocation", (file_dir + "/_checkpoint")) \
+            .option("path", file_path)\
             .trigger(processingTime=processing_time).start()
         query.awaitTermination()
         #query.stop()
@@ -75,8 +75,8 @@ def load_data(df, month, insurer, type):
         query = df.writeStream.format("parquet")\
             .outputMode("append")\
             .queryName(type) \
-            .option("checkpointLocation", (file_path + "/_checkpoint")) \
-            .option("path", file_path + ".parquet")\
+            .option("checkpointLocation", (file_dir + "/_checkpoint")) \
+            .option("path", file_path)\
             .trigger(processingTime=processing_time).start()
         query.awaitTermination()
         #query.stop()
