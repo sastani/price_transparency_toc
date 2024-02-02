@@ -1,21 +1,23 @@
-import os
+from os import path, mkdir, makedirs, getcwd
 import re
 from datetime import datetime
 from pathlib import Path
 
 #utility methods
 def get_root_dir():
-    user_dir = str(Path(os.getcwd()).parents[1])
+    user_dir = str(Path(getcwd()).parents[1])
     return user_dir
 
 def get_file_name(file_path):
-    file_name = os.path.basename(file_path)
+    file_name = path.basename(file_path)
     return file_name
 
 def create_dir_path(insurer, subdir, file_name):
     reporting_month = get_date_from_file_name(file_name)
     root_dir = get_root_dir()
     dir_path = root_dir + "/" + insurer + "/" + reporting_month + "/" + subdir
+    if not path.exists(dir_path):
+        makedirs(dir_path)
     return dir_path
 
 def get_file_from_url(url):
@@ -38,7 +40,7 @@ def get_date_from_file_name(file_name):
 
 def get_index(spark, reporting_month):
     index_file_path = get_root_dir() + "/out/" + reporting_month + "/index.parquet"
-    if os.path.exists(index_file_path):
+    if path.exists(index_file_path):
         file_df = spark.read.parquet(index_file_path)
         return file_df
     else:
@@ -48,17 +50,37 @@ def get_index(spark, reporting_month):
 def load_data(df, month, insurer, type):
     file_dir = get_root_dir() + "/" + insurer + "/" + month + "/"
     file_path = file_dir + type
-    if type == "index":
-        pass
-        #df.write.mode("append").parquet(file_path + ".parquet")
-        #df.repartition("network_file_name").write.partitionBy("network_file_name").mode("append").parquet(file_path + ".parquet")
-    elif type == "plan":
-        pass
-        #df.write.mode("append").parquet(file_path + ".parquet")
-        #df.repartition("plan_name").write.partitionBy("plan_name").mode("append").parquet(file_path + ".parquet")
+    print(file_path)
+    processing_time = '5 seconds'
+    if type == "index" or type == "plan":
+        if type == "index":
+            partition_key = "network_file_name"
+        else:
+            partition_key = "plan_name"
+        if not path.exists(file_path):
+            mkdir(file_path)
+        query = df.repartition(partition_key).writeStream\
+            .format("parquet") \
+            .outputMode("append")\
+            .queryName(type)\
+            .option("checkpointLocation", (file_path + "/_checkpoint")) \
+            .option("path", file_path + ".parquet")\
+            .trigger(processingTime=processing_time).start()
+        query.awaitTermination()
+        #query.stop()
     else:
-        df = df.repartition("network_file_name")
-        query = df.writeStream.outputMode("append").format("parquet")\
-            .option("checkpointLocation", (file_path + "/checkpoint"))\
-            .option("path", (file_path + ".parquet")).trigger(processingTime='5 seconds')\
-            .start().awaitTermination()
+        if not path.exists(file_path):
+            mkdir(file_path)
+        print(file_path)
+        query = df.writeStream.format("parquet")\
+            .outputMode("append")\
+            .queryName(type) \
+            .option("checkpointLocation", (file_path + "/_checkpoint")) \
+            .option("path", file_path + ".parquet")\
+            .trigger(processingTime=processing_time).start()
+        query.awaitTermination()
+        #query.stop()
+
+
+
+

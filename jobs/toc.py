@@ -4,7 +4,6 @@ from pyspark.sql.types import *
 from file_utils import *
 from spark import start_spark
 from parser import parse_response
-from confluent_kafka import Consumer
 import json
 
 class _dataSchema:
@@ -50,84 +49,81 @@ def main(mrf_url, insurer):
     subdir = "report_objs"
     mrf_file_name = get_file_from_url(mrf_url)
     file_path = create_dir_path(insurer, subdir, mrf_file_name)
+    file_path = file_path + "/"
 
-    if not path.exists(file_path):
-        makedirs(file_path)
-    pre_process_data(sc, spark, mrf_url, mrf_file_name, file_path, 10000)
-    #spark_log.info('Preprocessed files have been created for objs from ' + insurer + "'s TOC " + "at " + file_path)
-
-    #read parquet file as stream and extract it into data frame
+    pre_process_data(spark, mrf_url, mrf_file_name, file_path, 10000)
     data = extract_data(spark, file_path)
-    spark_log.info("Read section file path " + file_path)
-    spark_log.info('Data has been read into data frame')
+    spark_log.info('Preprocessed file has been created for objs from ' + insurer + "'s TOC " + "at " + file_path)
+    #read parquet file as stream and extract it into data frame
+
+    spark_log.info('Data has been read into data frame for: ' + file_path)
     #actually process the data in the file
     #insurer name hardcoded but could be read from list/dictionary (of insurers), etc
     #use name of insurer to make repo which will hold output from two seperate dfs
-    reporting_month, unique_files_df, plan_df  = process_file(mrf_file_name, data, spark_log)
-
+    reporting_month, unique_files_df, plan_df  = process_file(mrf_file_name, data)
     # load data to monthly index file for insurer (represents all unique files for that month)
-    #load_data(unique_files_df, reporting_month, repo, "index")
-    spark_log.info('Dataframe for index file has been persisted to disk')
+    load_data(unique_files_df, reporting_month, insurer, "index")
+    #spark_log.info('Dataframe for index file has been persisted to disk')
 
     # load data to monthly plan file (represents mapping of plans to (unique) index files)
-    #load_data(plan_df, reporting_month, repo, "plan")
-    spark_log.info('Dataframe for plan file has been persisted to disk')
-
+    load_data(plan_df, reporting_month, insurer, "plan")
+    #spark_log.info('Dataframe for plan file has been persisted to disk')
+    spark_log.info('Dataframe for index file and plan file has been persisted to disk')
     #finally, make result query
-    result_query(unique_files_df, plan_df, "NY", "PPO", spark_log, reporting_month, insurer)
+    #files_and_plans_df = result_query(unique_files_df, plan_df, "NY", "PPO", spark_log, reporting_month, insurer)
+    #load data to result file for only NY PPO plans
+    #load_data(files_and_plans_df, reporting_month, insurer, "result")
+    spark_log.info('Dataframe for result file has been persisted to disk')
+
 
     #log the success of the job
     spark_log.info('Job is finished')
+
     spark.stop()
     return None
 
 
 #pre process JSON data coming in as stream from web request
-def pre_process_data(sc, spark, url, file_name, file_path, num_objs_in_file):
+def pre_process_data(spark, url, file_name, file_path, num_objs_in_file):
 
-    data = []
+    json_payload = []
     obj_count_str = str()
-    file_path = file_path + "/"
-    for obj_count in parse_response(url):
-        #if obj_count % num_objs_in_file == 0:
-        obj_count_str = str(obj_count)
-        obj_file_name = file_name + "-" + obj_count_str
-        obj_file_path = file_path + obj_file_name
-        #j = json.dumps(data, separators=(',', ':'))
-        df = spark.readStream.format("kafka") \
-            .option("kafka.bootstrap.servers", "localhost:9093") \
-            .option("subscribe", "json_events") \
-            .load()
-        df.writeStream.format("parquet")\
-            .option("path", obj_file_path + ".parquet") \
-            .option("checkpointLocation", (file_path + "/checkpoint"))\
-            .option("schema", schema)\
-            .outputMode("append").start()
 
-    #create file for any leftover objects
-    obj_file_name = file_name + "-" + str(int(obj_count_str) + 1)
+    for obj, obj_count in parse_response(url):
+        json_payload.append(obj)
+        if obj_count % num_objs_in_file == 0:
+            obj_count_str = str(obj_count)
+            obj_file_name = file_name + "-" + obj_count_str
+            obj_file_path = file_path + obj_file_name + '.json'
+            f = open(obj_file_path, 'w')
+            print(json_payload)
+            print(json.dump(json_payload, fp=f, separators=(',', ':')))
+            json_payload = []
+
+    # create file for any leftover objects
+    if obj_count < num_objs_in_file:
+        obj_file_name = file_name + '-0'
+    else:
+        obj_file_name = file_name + "-leftover"
     obj_file_path = file_path + obj_file_name
-    df = spark.readStream.format("kafka") \
-        .option("kafka.bootstrap.servers", "localhost:9093") \
-        .option("subscribe", "json_events") \
-        .load()
-    df.writeStream.format("parquet") \
-        .option("path", obj_file_path + ".parquet") \
-        .option("checkpointLocation", (file_path + "/checkpoint")) \
-        .outputMode("append").start()
+    f = open(obj_file_path + '.json', 'w')
+    json.dump(json_payload, fp=f, separators=(',', ':'))
+    #yield obj_file_path
+
 
 def extract_data(spark, file_path):
     #rdd = pureReadText(file_path, spark)
-    stream_df = spark.readStream.format("parquet").schema(schema).load(file_path + "/*.parquet")
+    stream_df = spark.readStream.format("json") \
+        .schema(schema) \
+        .load(file_path + "/*")
     return stream_df
 
-def process_file(file_name, data, spark_log):
+def process_file(file_name, data):
     reporting_month = get_date_from_file_name(file_name)
     plan_df, unique_files_df = transform_plan_to_file(file_name, data, reporting_month)
     #get only the columns from the dataframes we are interested in
     #unique_files_df = unique_files_df.select("url" "network_file_name")
     plan_df = plan_df.select("plan_id", "plan_id_type", "plan_name", "network_file_name")
-    #select only data representing NY network and that is also associated with a PPO plan
     #some preprocessesing so we can get the state from the network file names
     unique_files_df = unique_files_df.withColumn("file_array", split(col("network_file_name"), "_"))
     #get first possible set of chars that could be the state
@@ -155,10 +151,7 @@ def result_query(unique_files_df, plan_df, state, plan, spark_log, reporting_mon
     unique_files_df_state = unique_files_df_state.select(col("network_file_name").alias("file_name"), col("url").alias("file_url"))
     files_and_plans_df = unique_files_df_state.join(plan_df, unique_files_df_state.file_name == plan_df.network_file_name, "inner")
     files_and_plans_df = files_and_plans_df.select(col("file_name"), col("file_url"), col("plan_name"), col("plan_id"))
-    #load data to result file for only NY PPO plans
-    load_data(files_and_plans_df, reporting_month, repo, "result")
-    spark_log.info('Dataframe for result file has been persisted to disk')
-
+    return files_and_plans_df
 
 def transform_plan_to_file(file_name, data, reporting_month):
     #only select columns we are interested in

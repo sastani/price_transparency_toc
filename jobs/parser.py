@@ -1,7 +1,6 @@
 import ijson
 import requests
 import gzip
-from confluent_kafka import Producer
 import json
 
 
@@ -10,7 +9,6 @@ def parse_response(url, counter=1):
         zipped = True
     else:
         zipped = False
-    p = Producer({'bootstrap.servers': '10.0.0.3:9093'})
 
     with requests.get(url, stream=True) as r:
         if zipped:
@@ -28,8 +26,7 @@ def parse_response(url, counter=1):
                     builder.event(event, value)
                     if (prefix, event) == ('reporting_structure.item', 'end_map'):
                         obj = builder.value
-                        p.produce('json_events', json.dumps(obj))
-                        yield counter
+                        yield obj, counter
                         builder = ijson.ObjectBuilder()
                         counter += 1
                     elif (prefix, event, value) == ('reporting_structure', 'end_array', None):
