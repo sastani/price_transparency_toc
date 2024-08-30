@@ -48,12 +48,14 @@ def main(mrf_url, insurer):
     #preprocess files and create necessary directories for files
     subdir = "report_objs"
     mrf_file_name = get_file_from_url(mrf_url)
+    print(mrf_file_name)
     file_path = create_dir_path(insurer, subdir, mrf_file_name)
     file_path = file_path + "/"
+    print(file_path)
 
-    pre_process_data(spark, mrf_url, mrf_file_name, file_path, 10)
+    #for num_chunk, json_file in pre_process_data(spark, mrf_url, mrf_file_name, file_path, 10):
     data = extract_data(spark, file_path)
-    spark_log.info('Preprocessed file has been created for objs from ' + insurer + "'s TOC " + "at " + file_path)
+    #spark_log.info('Preprocessed file for chunk: ' + num_chunk  +' has been created for objs from ' + insurer + "'s TOC " + "at " + file_path)
     #read parquet file as stream and extract it into data frame
 
     spark_log.info('Data has been read into data frame for: ' + file_path)
@@ -61,6 +63,7 @@ def main(mrf_url, insurer):
     #insurer name hardcoded but could be read from list/dictionary (of insurers), etc
     #use name of insurer to make repo which will hold output from two seperate dfs
     reporting_month, unique_files_df, plan_df  = process_file(mrf_file_name, data)
+    print(plan_df.show())
     # load data to monthly index file for insurer (represents all unique files for that month)
     load_data(unique_files_df, reporting_month, insurer, "index")
     #spark_log.info('Dataframe for index file has been persisted to disk')
@@ -82,42 +85,22 @@ def main(mrf_url, insurer):
     spark.stop()
     return None
 
-
-#pre process JSON data coming in as stream from web request
-def pre_process_data(spark, url, file_name, file_path, num_objs_in_file):
-
-    json_payload = []
-    obj_count_str = str()
-
+def pre_process_data(spark, url, insurer):
     for obj, obj_count in parse_response(url):
-        json_payload.append(obj)
-        if obj_count % num_objs_in_file == 0:
-            obj_count_str = str(obj_count)
-            obj_file_name = file_name + "-" + obj_count_str
-            obj_file_path = file_path + obj_file_name + '.json'
-            f = open(obj_file_path, 'w')
-            print(json_payload)
-            print(json.dump(json_payload, fp=f, separators=(',', ':')))
-            yield obj_count
-            json_payload = []
+        obj_file_name = file_name + "-" + str(obj_count) + ".json"
+        f = open(obj_file_name, "w")
+        json.dump(obj, f)
+        log.info('File has been created for obj: ' + obj_count  + " from " + insurer + "'s TOC")
+        yield obj_file_name
 
-    # create file for any leftover objects
-    if obj_count < num_objs_in_file:
-        obj_file_name = file_name + '-0'
-    else:
-        obj_file_name = file_name + "-leftover"
-    obj_file_path = file_path + obj_file_name
-    f = open(obj_file_path + '.json', 'w')
-    json.dump(json_payload, fp=f, separators=(',', ':'))
-    #yield obj_file_path
 
 
 def extract_data(spark, file_path):
     #rdd = pureReadText(file_path, spark)
-    stream_df = spark.readStream.format("json") \
+    df = spark.read.format("json") \
         .schema(schema) \
-        .load(file_path + "/*")
-    return stream_df
+        .load(file_path)
+    return df
 
 def process_file(file_name, data):
     reporting_month = get_date_from_file_name(file_name)
@@ -188,5 +171,5 @@ def transform_plan_to_file(file_name, data, reporting_month):
     return plan_df, unique_files
 
 if __name__ == '__main__':
-    mrf_url = "https://antm-pt-prod-dataz-nogbd-nophi-us-east1.s3.amazonaws.com/anthem/2024-02-01_anthem_index.json.gz"
+    mrf_url = "https://antm-pt-prod-dataz-nogbd-nophi-us-east1.s3.amazonaws.com/anthem/2024-08-01_anthem_index.json.gz"
     main(mrf_url, "anthem")

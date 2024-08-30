@@ -47,39 +47,19 @@ def get_index(spark, reporting_month):
         return None
 
 # load data to file, depending on its "type"
+
 def load_data(df, month, insurer, type):
-    file_dir = get_root_dir() + "/" + insurer + "/" + month + "/"
-    file_path = file_dir + type
-    print(file_path)
-    processing_time = '5 seconds'
+    index_file_path = get_root_dir() + "/out/" + insurer + "/" + month + "/index.parquet"
     if type == "index" or type == "plan":
         if type == "index":
             partition_key = "network_file_name"
         else:
             partition_key = "plan_name"
-        if not path.exists(file_path):
-            mkdir(file_path)
-        query = df.repartition(partition_key).writeStream\
-            .format("parquet") \
-            .outputMode("append")\
-            .queryName(type)\
-            .option("checkpointLocation", (file_dir + "/_checkpoint")) \
-            .option("path", file_path)\
-            .trigger(processingTime=processing_time).start()
-        query.awaitTermination()
-        #query.stop()
-    else:
-        if not path.exists(file_path):
-            mkdir(file_path)
-        print(file_path)
-        query = df.writeStream.format("parquet")\
-            .outputMode("append")\
-            .queryName(type) \
-            .option("checkpointLocation", (file_dir + "/_checkpoint")) \
-            .option("path", file_path)\
-            .trigger(processingTime=processing_time).start()
-        query.awaitTermination()
-        #query.stop()
+        if path.exists(index_file_path):
+            df = df.repartition(partition_key)
+            df = df.write.mode("append").format("parquet").save(index_file_path)
+        else:
+            df.write.format("parquet").save(index_file_path)
 
 
 
