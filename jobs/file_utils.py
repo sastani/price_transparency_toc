@@ -32,7 +32,7 @@ def get_date():
     curr_date_time = datetime.now()
     return curr_date_time
 def get_date_from_file_name(file_name):
-    match = re.search('\d{4}-\d{2}-\d{2}', file_name)
+    match = re.search('d{4}-d{2}-d{2}', file_name)
     date = match.group()
     date_as_list = date.split("-")
     date = date_as_list[1] + "-" + date_as_list[0]
@@ -49,17 +49,20 @@ def get_index(spark, reporting_month):
 # load data to file, depending on its "type"
 
 def load_data(df, month, insurer, type):
-    index_file_path = get_root_dir() + "/out/" + insurer + "/" + month + "/index.parquet"
+    #path = get_root_dir()
+    root_path = "C:/Users/sinaa/PycharmProjects"
+    file_path = root_path + "/out/" + insurer + "/" + month + "/" + type + ".parquet"
+    print(file_path)
     if type == "index" or type == "plan":
         if type == "index":
             partition_key = "network_file_name"
         else:
             partition_key = "plan_name"
-        if path.exists(index_file_path):
+        if path.exists(file_path):
             df = df.repartition(partition_key)
-            df = df.write.mode("append").format("parquet").save(index_file_path)
+            df = df.write.mode("append").format("parquet").save(file_path)
         else:
-            df.write.format("parquet").save(index_file_path)
+            df.write.format("parquet").save(file_path)
 
 
 

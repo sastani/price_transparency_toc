@@ -10,7 +10,8 @@ class _dataSchema:
 
     def __init__(self):
         # define the schema for all our processing
-        self.schema = StructType([
+        self.\
+        schema = StructType([
             StructField('allowed_amount_file',
                         StructType([StructField('description', StringType(), True),
                                     StructField('location', StringType(), True)]), True),
@@ -36,6 +37,7 @@ def main(mrf_url, insurer):
         configs={"spark.executor.memory": "12g",
                   "spark.driver.memory": "10g",
                   "spark.driver.host": "10.0.0.3",
+                 "spark.driver.bindAddress": "127.0.0.1",
                     "spark.driver.maxResultSize": "0",
                     "spark.executor.instances": "1",
                     "spark.sql.shuffle.partitions": "10",
@@ -49,8 +51,9 @@ def main(mrf_url, insurer):
     subdir = "report_objs"
     mrf_file_name = get_file_from_url(mrf_url)
     print(mrf_file_name)
-    file_path = create_dir_path(insurer, subdir, mrf_file_name)
-    file_path = file_path + "/"
+    #file_path = create_dir_path(insurer, subdir, mrf_file_name)
+    #file_path = file_path + "/"
+    file_path = "C:/Users/sinaa/Downloads/2024-08-01_anthem_index.json/2024-08-01_anthem_index.json"
     print(file_path)
 
     #for num_chunk, json_file in pre_process_data(spark, mrf_url, mrf_file_name, file_path, 10):
@@ -73,9 +76,9 @@ def main(mrf_url, insurer):
     #spark_log.info('Dataframe for plan file has been persisted to disk')
     spark_log.info('Dataframe for index file and plan file has been persisted to disk')
     #finally, make result query
-    #files_and_plans_df = result_query(unique_files_df, plan_df, "NY", "PPO", spark_log, reporting_month, insurer)
+    files_and_plans_df = result_query(unique_files_df, plan_df, "NY", "PPO", spark_log, reporting_month, insurer)
     #load data to result file for only NY PPO plans
-    #load_data(files_and_plans_df, reporting_month, insurer, "result")
+    load_data(files_and_plans_df, reporting_month, insurer, "result")
     spark_log.info('Dataframe for result file has been persisted to disk')
 
 
@@ -103,11 +106,12 @@ def extract_data(spark, file_path):
     return df
 
 def process_file(file_name, data):
-    reporting_month = get_date_from_file_name(file_name)
+    #reporting_month = get_date_from_file_name(file_name)
+    reporting_month = "2024-08"
     plan_df, unique_files_df = transform_plan_to_file(file_name, data, reporting_month)
     #get only the columns from the dataframes we are interested in
     #unique_files_df = unique_files_df.select("url" "network_file_name")
-    plan_df = plan_df.select("plan_id", "plan_id_type", "plan_name", "network_file_name")
+    #plan_df = plan_df.select("plan_id", "plan_id_type", "plan_name", "network_file_name")
     #some preprocessesing so we can get the state from the network file names
     unique_files_df = unique_files_df.withColumn("file_array", split(col("network_file_name"), "_"))
     #get first possible set of chars that could be the state
